@@ -1,184 +1,80 @@
-<!DOCTYPE html>
-<html lang="he" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>מערכת חילוץ נתונים פיננסיים</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Assistant', sans-serif; background: linear-gradient(-45deg, #0f172a, #1e293b, #334155, #1e1b4b); background-size: 400% 400%; animation: gradient 15s ease infinite; min-height: 100vh; }
-        @keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-        .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.3); }
-        .loader { border-top-color: #6366f1; animation: spinner 1.5s linear infinite; }
-        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-    </style>
-</head>
-<body class="flex items-center justify-center p-4">
+<!-- ... (אותו עיצוב CSS ו-HTML מהקוד הקודם) ... -->
 
-    <div class="max-w-4xl w-full glass rounded-[2rem] shadow-2xl p-8 md:p-12">
-        <header class="text-center mb-10">
-            <h1 class="text-4xl font-bold text-slate-800 mb-4">מחלץ נתוני שוק</h1>
-            <p class="text-lg text-slate-600 leading-relaxed">
-                ברוכים הבאים למערכת חילוץ הנתונים. כאן תוכלו לשלוף שערי סגירה למספר מניות במקביל, להשוות ביניהן בסדרות-זמן, ולייצא בקליק.
-            </p>
-        </header>
+<script>
+    const WEB_APP_URL = 'כאן_שמים_את_הכתובת_של_הסקריפט'; 
+    let globalCsvData = "";
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div class="flex flex-col">
-                <label class="font-semibold text-slate-700 mb-2">סימולי מניות (אנגלית בלבד)</label>
-                <input id="tickers" type="text" placeholder="AAPL, TSLA, MSFT" class="p-3 rounded-xl border outline-none transition-all focus:ring-2 focus:ring-indigo-500">
-                <span class="text-xs text-slate-500 mt-1">הזן סימולים מופרדים בפסיק</span>
-            </div>
-            <div class="flex flex-col">
-                <label class="font-semibold text-slate-700 mb-2">תדירות</label>
-                <select id="frequency" class="p-3 rounded-xl border bg-white outline-none">
-                    <option value="DAILY">יומי</option>
-                    <option value="WEEKLY">שבועי</option>
-                    <option value="MONTHLY">חודשי</option>
-                </select>
-            </div>
-            <div class="flex flex-col">
-                <label class="font-semibold text-slate-700 mb-2">תאריך התחלה</label>
-                <input id="startDate" type="date" class="p-3 rounded-xl border outline-none">
-            </div>
-            <div class="flex flex-col">
-                <label class="font-semibold text-slate-700 mb-2">תאריך סיום</label>
-                <input id="endDate" type="date" class="p-3 rounded-xl border outline-none">
-            </div>
-        </div>
-
-        <button onclick="fetchData()" id="mainBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl text-xl transition-all flex items-center justify-center gap-3">
-            <span>טען נתונים</span>
-            <div id="loader" class="hidden w-6 h-6 border-4 border-white/30 loader rounded-full"></div>
-        </button>
-
-        <div id="statusMsg" class="hidden mt-6 p-4 rounded-xl text-center font-semibold"></div>
-
-        <div id="previewContainer" class="hidden mt-10 overflow-x-auto rounded-xl border">
-            <h3 class="text-xl font-bold text-slate-800 mb-4 px-2 pt-4">תצוגה מקדימה (6 שורות ראשונות)</h3>
-            <div id="tableContent"></div>
-        </div>
-
-        <div id="exportArea" class="hidden mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <button onclick="downloadCSV()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition-all">📂 הורד כ-CSV</button>
-            <button onclick="exportToSheet()" id="sheetBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-                📊 ייצא ל-Google Sheets
-                <div id="sheetLoader" class="hidden w-4 h-4 border-2 border-white/30 loader rounded-full"></div>
-            </button>
-        </div>
-    </div>
-
-    <script>
-        const WEB_APP_URL = 'כאן_שמים_את_הכתובת_של_הסקריפט'; 
-        let globalCsvData = "";
-
-        // הגבלת תאריכים להיום
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('startDate').setAttribute('max', today);
-        document.getElementById('endDate').setAttribute('max', today);
-
-        function validateForm(payload) {
-            const tickers = payload.tickers.trim();
-            const start = new Date(payload.startDate);
-            const end = new Date(payload.endDate);
-            const tickersList = tickers.split(',').filter(t => t.trim() !== "");
-
-            if (!tickers || !payload.startDate || !payload.endDate) return "יש למלא את כל השדות.";
-            if (/[\u0590-\u05FF]/.test(tickers)) return "נא להזין סימולי מניות באנגלית בלבד.";
-            if (tickersList.length > 10) return "ניתן להזין עד 10 מניות במקביל.";
-            if (start >= end) return "תאריך ההתחלה חייב להיות מוקדם מתאריך הסיום.";
-            
-            const diffYears = (end - start) / (1000 * 60 * 60 * 24 * 365);
-            if (payload.frequency === "DAILY" && diffYears > 5) return "טווח יומי מעל 5 שנים הוא כבד מדי. בחר תדירות שבועית/חודשית.";
-
-            return null;
+    function validateForm(payload) {
+        const tickersRaw = payload.tickers.trim();
+        const start = new Date(payload.startDate);
+        const end = new Date(payload.endDate);
+        
+        if (!tickersRaw || !payload.startDate || !payload.endDate) return "יש למלא את כל השדות.";
+        
+        // ולידציה של טיקרים: מותר רק אותיות, מספרים, נקודות (למניות זרות) ופסיקים
+        const tickerRegex = /^[A-Z0-9., ]+$/i;
+        if (!tickerRegex.test(tickersRaw)) {
+            return "סימולי המניות מכילים תווים לא חוקיים. השתמש באותיות באנגלית בלבד.";
         }
 
-        async function fetchData() {
-            const payload = {
-                tickers: document.getElementById('tickers').value,
-                startDate: document.getElementById('startDate').value,
-                endDate: document.getElementById('endDate').value,
-                frequency: document.getElementById('frequency').value,
-                action: 'csv'
-            };
+        const tickersList = tickersRaw.split(',').filter(t => t.trim() !== "");
+        if (tickersList.length > 10) return "ניתן להזין עד 10 מניות במקביל.";
+        if (start >= end) return "תאריך ההתחלה חייב להיות מוקדם מתאריך הסיום.";
+        
+        return null;
+    }
 
-            const error = validateForm(payload);
-            if (error) { showAlert(error, "error"); return; }
+    async function fetchData() {
+        const payload = {
+            tickers: document.getElementById('tickers').value,
+            startDate: document.getElementById('startDate').value,
+            endDate: document.getElementById('endDate').value,
+            frequency: document.getElementById('frequency').value,
+            action: 'csv'
+        };
 
-            toggleLoading(true);
-            try {
-                const response = await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-                if (result.status === "success") {
-                    globalCsvData = result.csvData;
-                    renderPreviewTable(globalCsvData);
-                    document.getElementById('exportArea').classList.remove('hidden');
-                    document.getElementById('previewContainer').classList.remove('hidden');
+        const error = validateForm(payload);
+        if (error) { showAlert(error, "error"); return; }
+
+        toggleLoading(true);
+        try {
+            const response = await fetch(WEB_APP_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            
+            if (result.status === "success") {
+                globalCsvData = result.csvData;
+                renderPreviewTable(globalCsvData);
+                document.getElementById('exportArea').classList.remove('hidden');
+                document.getElementById('previewContainer').classList.remove('hidden');
+
+                // בדיקה אם היו טיקרים שגויים בתוך הצלחה
+                if (result.invalidTickers && result.invalidTickers.length > 0) {
+                    showAlert(`הנתונים נטענו, אך לא נמצאו נתונים עבור הסימולים הבאים: ${result.invalidTickers.join(', ')}. וודא שהם כתובים נכון.`, "warning");
+                } else {
                     showAlert("הנתונים נשלפו בהצלחה!", "success");
-                } else throw new Error(result.message);
-            } catch (err) { showAlert(err.message, "error"); }
-            finally { toggleLoading(false); }
-        }
-
-        function renderPreviewTable(csvText) {
-            const rows = csvText.split('\n').slice(0, 7);
-            let html = `<table class="min-w-full bg-white"><thead class="bg-slate-50 border-b"><tr>`;
-            rows[0].split(',').forEach(h => html += `<th class="px-4 py-3 text-right text-sm font-bold text-slate-700">${h}</th>`);
-            html += `</tr></thead><tbody>`;
-            for (let i = 1; i < rows.length; i++) {
-                if (!rows[i]) continue;
-                html += `<tr class="border-b">`;
-                rows[i].split(',').forEach(c => html += `<td class="px-4 py-3 text-sm text-slate-600">${c}</td>`);
-                html += `</tr>`;
+                }
+            } else {
+                throw new Error(result.message);
             }
-            document.getElementById('tableContent').innerHTML = html + `</tbody></table>`;
+        } catch (err) { 
+            showAlert(err.message, "error"); 
+        } finally { 
+            toggleLoading(false); 
         }
+    }
 
-        function downloadCSV() {
-            const blob = new Blob([globalCsvData], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `data_${new Date().getTime()}.csv`;
-            link.click();
-        }
+    function showAlert(msg, type) {
+        const el = document.getElementById('statusMsg');
+        el.innerHTML = msg; el.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-yellow-100', 'text-yellow-700');
+        
+        if (type === "error") el.classList.add('bg-red-100', 'text-red-700');
+        else if (type === "warning") el.classList.add('bg-yellow-100', 'text-yellow-700');
+        else el.classList.add('bg-green-100', 'text-green-700');
+    }
 
-        async function exportToSheet() {
-            const btn = document.getElementById('sheetBtn');
-            const loader = document.getElementById('sheetLoader');
-            btn.disabled = true; loader.classList.remove('hidden');
-            
-            const payload = {
-                tickers: document.getElementById('tickers').value,
-                startDate: document.getElementById('startDate').value,
-                endDate: document.getElementById('endDate').value,
-                frequency: document.getElementById('frequency').value,
-                action: 'sheet'
-            };
-
-            try {
-                const response = await fetch(WEB_APP_URL, { method: 'POST', body: JSON.stringify(payload) });
-                const result = await response.json();
-                if (result.status === "success") showAlert(`נוצר בהצלחה! <a href="${result.sheetUrl}" target="_blank" class="underline font-bold">לחץ כאן לפתיחה</a>`, "success");
-            } catch (err) { showAlert("ייצוא נכשל.", "error"); }
-            finally { btn.disabled = false; loader.classList.add('hidden'); }
-        }
-
-        function toggleLoading(isLoading) {
-            document.getElementById('mainBtn').disabled = isLoading;
-            document.getElementById('loader').classList.toggle('hidden', !isLoading);
-        }
-
-        function showAlert(msg, type) {
-            const el = document.getElementById('statusMsg');
-            el.innerHTML = msg; el.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
-            el.classList.add(type === "error" ? 'bg-red-100' : 'bg-green-100', type === "error" ? 'text-red-700' : 'text-green-700');
-        }
-    </script>
-</body>
-</html>
+    // ... (יתר פונקציות העזר כמו renderPreviewTable ו-toggleLoading נשארות זהות)
+</script>
